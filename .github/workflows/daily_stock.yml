@@ -1,0 +1,51 @@
+name: 每日上证指数记录
+
+on:
+  # 定时触发：工作日北京时间 15:30（A股收盘后）
+  # UTC 07:30 = 北京时间 15:30
+  schedule:
+    - cron: '30 7 * * 1-5'
+  
+  # 备用：15:00 也跑一次（盘中数据）
+  # - cron: '0 7 * * 1-5'
+  
+  # 手动触发（方便测试）
+  workflow_dispatch:
+
+jobs:
+  record-stock:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 检出仓库
+        uses: actions/checkout@v4
+      
+      - name: 🐍 设置 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: 📊 获取并记录上证指数数据
+        id: fetch
+        run: |
+          python fetch_stock.py
+          # 输出执行结果供后续步骤使用
+          echo "status=success" >> $GITHUB_OUTPUT
+        continue-on-error: true  # 即使失败也不阻断流程
+      
+      - name: 📤 提交数据到仓库
+        run: |
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          
+          # 添加数据文件（如果存在）
+          git add records.csv records.json 2>/dev/null || true
+          
+          # 检查是否有变更
+          if git diff --cached --quiet; then
+            echo "ℹ️ 没有新数据需要提交"
+          else
+            git commit -m "📊 自动更新上证指数数据 - $(TZ='Asia/Shanghai' date +'%Y-%m-%d %H:%M')"
+            git push
+            echo "✅ 数据已推送至仓库"
+          fi
